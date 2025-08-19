@@ -1,5 +1,7 @@
 using ADUserInfoService.Interfaces;
 using ADUserInfoService.Models;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 using System.DirectoryServices;
 using System.DirectoryServices.AccountManagement;
 using System.Runtime.Versioning;
@@ -72,31 +74,51 @@ namespace ADUserInfoService.Services
             return await Task.Run(() => GetUserByUsername(username));
         }
 
-        public ADUserInfo? GetUserByEmail(string email)
+        public List<ADUserInfo> GetUsersByEmail(string email)
         {
+            var users = new List<ADUserInfo>();
             try
             {
+                // First try to find by UserPrincipalName
                 using var userPrincipal = UserPrincipal.FindByIdentity(_principalContext, IdentityType.UserPrincipalName, email);
-                if (userPrincipal == null)
+                if (userPrincipal != null)
                 {
-                    using var searcher = new PrincipalSearcher();
-                    var user = new UserPrincipal(_principalContext) { EmailAddress = email };
-                    searcher.QueryFilter = user;
-                    var result = searcher.FindOne() as UserPrincipal;
-                    if (result == null)
-                        return null;
-
-                    var info = GetUserInfo(result);
-                    result.Dispose();
-                    return info;
+                    users.Add(GetUserInfo(userPrincipal));
                 }
 
-                return GetUserInfo(userPrincipal);
+                // Then search for all users with this email address
+                using var searcher = new PrincipalSearcher();
+                var user = new UserPrincipal(_principalContext) { EmailAddress = email };
+                searcher.QueryFilter = user;
+
+                foreach (UserPrincipal result in searcher.FindAll())
+                {
+                    // Avoid duplicates - check if we already added this user
+                    var userInfo = GetUserInfo(result);
+                    if (!users.Any(u => u.SamAccountName == userInfo.SamAccountName))
+                    {
+                        users.Add(userInfo);
+                    }
+                    result.Dispose();
+                }
+
+                return users;
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Error retrieving user by email '{email}'", ex);
+                throw new InvalidOperationException($"Error retrieving users by email '{email}'", ex);
             }
+        }
+
+        public async Task<List<ADUserInfo>> GetUsersByEmailAsync(string email)
+        {
+            return await Task.Run(() => GetUsersByEmail(email));
+        }
+
+        public ADUserInfo? GetUserByEmail(string email)
+        {
+            var users = GetUsersByEmail(email);
+            return users.FirstOrDefault();
         }
 
         public async Task<ADUserInfo?> GetUserByEmailAsync(string email)
@@ -672,6 +694,128 @@ namespace ADUserInfoService.Services
         {
             Dispose(true);
             GC.SuppressFinalize(this);
+        }
+
+        public async Task<string> ExportAllUsersToExcelAsync(string directoryPath)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+                    var allUsers = GetAllUsers();
+
+                    if (!Directory.Exists(directoryPath))
+                    {
+                        Directory.CreateDirectory(directoryPath);
+                    }
+
+                    var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    var fileName = $"ADUsers_{timestamp}.xlsx";
+                    var filePath = Path.Combine(directoryPath, fileName);
+
+                    using (var package = new ExcelPackage())
+                    {
+                        var worksheet = package.Workbook.Worksheets.Add("AD Users");
+
+                        var headers = new[]
+                        {
+                            "SamAccountName", "UserPrincipalName", "DisplayName", "FirstName", "LastName",
+                            "MiddleName", "Email", "EmployeeId", "EmployeeNumber", "EmployeeType",
+                            "Department", "Title", "Company", "Division", "Organization",
+                            "Manager", "OfficeLocation", "StreetAddress", "City", "State",
+                            "PostalCode", "Country", "TelephoneNumber", "MobilePhone", "HomePhone",
+                            "IsEnabled", "IsLockedOut", "LastLogonDate", "WhenCreated", "DistinguishedName"
+                        };
+
+                        for (int i = 0; i < headers.Length; i++)
+                        {
+                            worksheet.Cells[1, i + 1].Value = headers[i];
+                        }
+
+                        using (var headerRange = worksheet.Cells[1, 1, 1, headers.Length])
+                        {
+                            headerRange.Style.Font.Bold = true;
+                            headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            headerRange.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+                            headerRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        }
+
+                        int row = 2;
+                        foreach (var user in allUsers)
+                        {
+                            worksheet.Cells[row, 1].Value = user.SamAccountName;
+                            worksheet.Cells[row, 2].Value = user.UserPrincipalName;
+                            worksheet.Cells[row, 3].Value = user.DisplayName;
+                            worksheet.Cells[row, 4].Value = user.FirstName;
+                            worksheet.Cells[row, 5].Value = user.LastName;
+                            worksheet.Cells[row, 6].Value = user.MiddleName;
+                            worksheet.Cells[row, 7].Value = user.Email;
+                            worksheet.Cells[row, 8].Value = user.EmployeeId;
+                            worksheet.Cells[row, 9].Value = user.EmployeeNumber;
+                            worksheet.Cells[row, 10].Value = user.EmployeeType;
+                            worksheet.Cells[row, 11].Value = user.Department;
+                            worksheet.Cells[row, 12].Value = user.Title;
+                            worksheet.Cells[row, 13].Value = user.Company;
+                            worksheet.Cells[row, 14].Value = user.Division;
+                            worksheet.Cells[row, 15].Value = user.Organization;
+                            worksheet.Cells[row, 16].Value = user.Manager;
+                            worksheet.Cells[row, 17].Value = user.OfficeLocation;
+                            worksheet.Cells[row, 18].Value = user.StreetAddress;
+                            worksheet.Cells[row, 19].Value = user.City;
+                            worksheet.Cells[row, 20].Value = user.State;
+                            worksheet.Cells[row, 21].Value = user.PostalCode;
+                            worksheet.Cells[row, 22].Value = user.Country;
+                            worksheet.Cells[row, 23].Value = user.TelephoneNumber;
+                            worksheet.Cells[row, 24].Value = user.MobilePhone;
+                            worksheet.Cells[row, 25].Value = user.HomePhone;
+                            worksheet.Cells[row, 26].Value = user.IsEnabled ? "Yes" : "No";
+                            worksheet.Cells[row, 27].Value = user.IsLockedOut ? "Yes" : "No";
+                            worksheet.Cells[row, 28].Value = user.LastLogonDate?.ToString("yyyy-MM-dd HH:mm:ss");
+                            worksheet.Cells[row, 29].Value = user.WhenCreated?.ToString("yyyy-MM-dd HH:mm:ss");
+                            worksheet.Cells[row, 30].Value = user.DistinguishedName;
+                            row++;
+                        }
+
+                        worksheet.Cells.AutoFitColumns();
+
+                        package.SaveAs(new FileInfo(filePath));
+                    }
+
+                    return filePath;
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"Error exporting users to Excel: {ex.Message}", ex);
+                }
+            });
+        }
+
+        private List<ADUserInfo> GetAllUsers()
+        {
+            var users = new List<ADUserInfo>();
+            try
+            {
+                using var searcher = new PrincipalSearcher();
+                var userFilter = new UserPrincipal(_principalContext);
+                searcher.QueryFilter = userFilter;
+
+                foreach (UserPrincipal user in searcher.FindAll())
+                {
+                    if (!string.IsNullOrEmpty(user.SamAccountName))
+                    {
+                        users.Add(GetUserInfo(user));
+                    }
+                    user.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Error retrieving all users from Active Directory", ex);
+            }
+
+            return users;
         }
     }
 }

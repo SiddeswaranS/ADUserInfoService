@@ -11,6 +11,10 @@ namespace ADUserInfoService.Interfaces
         
         Task<ADUserInfo?> GetUserByUsernameAsync(string username);
         
+        List<ADUserInfo> GetUsersByEmail(string email);
+        
+        Task<List<ADUserInfo>> GetUsersByEmailAsync(string email);
+        
         ADUserInfo? GetUserByEmail(string email);
         
         Task<ADUserInfo?> GetUserByEmailAsync(string email);
@@ -70,5 +74,7 @@ namespace ADUserInfoService.Interfaces
         byte[]? GetUserPhoto(string username);
         
         Task<byte[]?> GetUserPhotoAsync(string username);
+        
+        Task<string> ExportAllUsersToExcelAsync(string directoryPath);
     }
 }

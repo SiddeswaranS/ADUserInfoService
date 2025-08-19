@@ -119,6 +119,7 @@ namespace ADUserInfoService.Example
                 Console.WriteLine("12. Get direct reports");
                 Console.WriteLine("13. Validate credentials");
                 Console.WriteLine("14. Get user photo");
+                Console.WriteLine("15. Export all users to Excel");
                 Console.WriteLine("0. Exit");
                 Console.Write("\nEnter choice: ");
 
@@ -179,6 +180,9 @@ namespace ADUserInfoService.Example
                     case "14":
                         await GetUserPhoto(adService);
                         break;
+                    case "15":
+                        await ExportAllUsersToExcel(adService);
+                        break;
                     default:
                         Console.WriteLine("Invalid operation.");
                         break;
@@ -215,14 +219,21 @@ namespace ADUserInfoService.Example
             if (string.IsNullOrEmpty(email))
                 return;
 
-            var user = await adService.GetUserByEmailAsync(email);
-            if (user != null)
+            var users = await adService.GetUsersByEmailAsync(email);
+            if (users != null && users.Count > 0)
             {
-                DisplayUserInfo(user);
+                Console.WriteLine($"\nFound {users.Count} user(s) with email '{email}':");
+                Console.WriteLine(new string('-', 60));
+
+                foreach (var user in users)
+                {
+                    DisplayUserInfo(user);
+                    Console.WriteLine(new string('-', 60));
+                }
             }
             else
             {
-                Console.WriteLine("User not found.");
+                Console.WriteLine("No users found with that email address.");
             }
         }
 
@@ -448,6 +459,48 @@ namespace ADUserInfoService.Example
                 {
                     Console.WriteLine($"  - {user.Groups[i]}");
                 }
+            }
+        }
+
+        static async Task ExportAllUsersToExcel(ADUserService adService)
+        {
+            Console.WriteLine("\n=== Export All Users to Excel ===");
+            Console.Write("Enter directory path to save Excel file (press Enter for D:\\Temp): ");
+            var directoryPath = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                directoryPath = @"D:\Temp";
+            }
+
+            Console.WriteLine($"\nExporting all AD users to Excel...");
+            Console.WriteLine($"Target directory: {directoryPath}");
+            Console.WriteLine("Please wait, this may take a few moments...");
+
+            try
+            {
+                var exportedFilePath = await adService.ExportAllUsersToExcelAsync(directoryPath);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n✓ Export completed successfully!");
+                Console.ResetColor();
+                Console.WriteLine($"File saved to: {exportedFilePath}");
+
+                Console.Write("\nWould you like to open the file location? (y/n): ");
+                if (Console.ReadLine()?.ToLower() == "y")
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{exportedFilePath}\"");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n✗ Export failed: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+                }
+                Console.ResetColor();
             }
         }
 

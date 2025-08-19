@@ -5,7 +5,8 @@
       "Bash(dotnet sln add:*)",
       "Bash(dotnet add package:*)",
       "Bash(dotnet add reference:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(dotnet build)"
     ],
     "deny": [],
     "ask": []
